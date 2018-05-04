@@ -253,3 +253,40 @@ fieldset legend {
     margin-top: 3ex;
     margin-bottom: 3ex;
 }
+
+table {
+    empty-cells: hide;
+}
+
+tr.spreadsheet-labels, tr.spreadsheet-labels th {
+    border: none;
+}
+
+th.spreadsheet-label, td.spreadsheet-label {
+    font-size: 90%;
+    color: #aaaaaa;
+}
+
+th.spreadsheet-label {
+    border: 0;
+    text-align: center;
+}
+
+td.spreadsheet-label {
+    border-right: 1px black;
+    font-size: 90%;
+    width: 3em;
+    text-align: right;
+}
+
+tr.highlight td {
+    background: yellow;
+}
+
+tr.highlight td.spreadsheet-label {
+    background: white;
+}
+
+tr.highlight td.highlight {
+    background: orange;
+}

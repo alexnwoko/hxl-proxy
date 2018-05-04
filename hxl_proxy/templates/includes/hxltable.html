@@ -2,14 +2,22 @@
     <div class="table-container hxltable">
     <table class="table">
       <thead>
+        <tr class="spreadsheet-labels">
+          <th class="spreadsheet-label"></th>
+          {% for column in source.columns %}
+          <th class="spreadsheet-label">{{ column.column_number|spreadsheet_col }}</th>
+          {% endfor %}
+        </tr>
         {% if (not recipe.args.get('strip-headers')) and source.has_headers %}
         <tr class="hxl-headers">
+          <th class="spreadsheet-label"></th>
           {% for header in source.headers %}
           <th>{{ header|nonone }}</th>
           {% endfor %}
         </tr>
         {% endif %}
         <tr class="hxl-tags" id="hashtag-row">
+          <th class="spreadsheet-label"></th>
           {% for tag in source.display_tags %}
           <th>{{ tag|nonone }}</th>
           {% endfor %}
@@ -17,9 +25,18 @@
       </thead>
       <tbody>
         {% for row in source %}
-        <tr id="row_{{ row.row_number }}">
+        {% if row.row_number==highlight_row %}
+        {% set tr_class="highlight" %}
+        {% endif %}
+        <tr id="row_{{ row.row_number }}" class="{{ tr_class }}">
+          <td class="spreadsheet-label">{{ row.source_row_number+1 }}</td>
           {% for value in row.values %}
-          <td><span class="content">{{ value|nonone }}</span></td>
+          {% if tr_class=="highlight" and loop.index0==highlight_column %}
+          {% set td_class="highlight" %}
+          {% endif %}
+          <td class="{{ td_class }}">
+            <span class="content">{{ value|nonone }}</span>
+          </td>
           {% endfor %}
         </tr>
         {% endfor %}

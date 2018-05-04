@@ -392,6 +392,14 @@ def data_view(recipe_id=None, format="html", stub=None, flavour=None):
         show_headers = (recipe['args'].get('strip-headers') != 'on')
         max_rows = recipe['args'].get('max-rows', None)
 
+        # Check for highlighting
+        highlight_row = None
+        highlight_column = None
+        if 'highlight' in recipe['args']:
+            parts = recipe['args']['highlight'].split(',')
+            highlight_row = int(parts[0])
+            highlight_column = int(parts[1])
+
         # Return a generator based on the format requested
         if format == 'html':
             max_rows = min(int(max_rows), 5000) if max_rows is not None else 5000
@@ -399,7 +407,9 @@ def data_view(recipe_id=None, format="html", stub=None, flavour=None):
                 'data-view.html',
                 source=preview.PreviewFilter(source, max_rows=max_rows),
                 recipe=recipe,
-                show_headers=show_headers
+                show_headers=show_headers,
+                highlight_row=highlight_row,
+                highlight_column=highlight_column
             )
 
         # Data formats from here on ...

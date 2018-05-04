@@ -175,13 +175,14 @@ def make_args(recipe={}, format=None, flavour=None, recipe_id=None, cloned=False
         args['recipe_id'] = recipe_id
     return args
 
-def data_url_for(endpoint, recipe={}, format=None, flavour=None, recipe_id=None, cloned=False):
+def data_url_for(endpoint, recipe={}, format=None, flavour=None, recipe_id=None, cloned=False, extras={}):
     """Generate a URL relative to the subpath (etc)
     Wrapper around flask.url_for
     """
     if not recipe_id:
         recipe_id = recipe.get('recipe_id')
     args = make_args(recipe, format=format, flavour=flavour, recipe_id=recipe_id, cloned=cloned)
+    args = {**args, **extras}
     if recipe_id and not cloned:
         args['recipe_id'] = recipe_id
     return url_for(endpoint, **args)
@@ -312,9 +313,10 @@ def spreadsheet_col_num_to_name(num):
     Adapted from http://asyoulook.com/computers%20&%20internet/python-convert-spreadsheet-number-to-column-letter/659618
     """
     letters = ''
+    num += 1 # from 0-based to 1-based
     while num:
         mod = num % 26
-        letters += chr(mod + 65)
+        letters += chr(mod + 64)
         num = num // 26
     return ''.join(reversed(letters))
 

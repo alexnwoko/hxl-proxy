@@ -54,10 +54,9 @@
         <thead>
           <tr>
             <th>Severity</th>
-            <th>Row</th>
-            <th>Column</th>
+            <th>Location</th>
             <th>Explanation</th>
-            <th>Tag</th>
+            <th>Hashtag</th>
             <th>Error value</th>
           </tr>
         </thead>
@@ -66,19 +65,22 @@
           <tr>
             <td><span class="badge {{ severity_class(error.rule.severity) }}">{{ error.rule.severity }}</span></td>
             <td>
-              {% if error.row %}
-              <a href="{{ data_url_for('data_view', recipe) }}#row_{{ error.row.row_number }}">{{ error.row.row_number+1 }}</a>
-              {% if error.row.source_row_number %}
-              ({{ error.row.source_row_number+1 }} in source)
-              {% endif %}
-              {% else %}
-              <a href="{{ data_url_for('data_view', recipe) }}#hashtag-row">Hashtags</a>
-              {% endif %}
-            </td>
-            <td>
-              {% if error.column %}
-              {{ error.column.column_number+1 }}
-              ({{ error.column.column_number|spreadsheet_col }})
+              {% if error.row and error.column %}
+              <a href="{{
+                         data_url_for(
+                           'data_view',
+                           recipe,
+                           extras={'highlight': '{},{}'.format(error.row.row_number, error.column.column_number)}
+                         )
+                       }}#row_{{
+                           error.row.row_number
+                       }}">
+                {{
+                  error.column.column_number|spreadsheet_col
+                }}{{
+                  error.row.source_row_number+1
+                }}
+              </a>
               {% endif %}
             </td>
             <td class="validation-message">{{ error.rule.description or error.message|nonone }}</td>
