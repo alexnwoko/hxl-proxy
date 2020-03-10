@@ -3,7 +3,7 @@ Started April 2019 by David Megginson
 License: Public Domain
 """
 
-import flask, hxl_proxy, werkzeug
+import flask, hxl_proxy, hxl_proxy.dao, werkzeug
 
 
 class Recipe:
@@ -83,18 +83,20 @@ class Recipe:
 
     
     def fromDict(self, props):
-        """ Serialise this object as a dict """
+        """ Deserialise this object from a dict """
         self.recipe_id = props.get("recipe_id")
         self.name = props.get("name")
         self.description = props.get("description")
         self.cloneable = props.get("cloneable")
         self.passhash = props.get("passhash")
         self.stub = props.get("stub")
+        self.date_created = props.get('date_created')
+        self.date_modified = props.get('date_modified')
         self.args = dict(props.get("args"))
 
         
     def toDict(self):
-        """ Deserialise this object from a dict """
+        """ Serialise this object to a dict """
         return {
             "recipe_id": self.recipe_id,
             "name": self.name,

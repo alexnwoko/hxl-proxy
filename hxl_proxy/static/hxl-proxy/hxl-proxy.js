@@ -404,9 +404,6 @@ hxl_proxy.util = {};
  */
 hxl_proxy.util.pad2 = function (num) {
     return ('00' + num).substr(-2);
-    var s = num+"";
-    while (s.length < size) s = "0" + s;
-    return s;
 };
 
 
@@ -473,6 +470,24 @@ $(function() {
 // Trim unused rows from the tagger form
 $(function() {
     $("form.tagger").submit(function () { hxl_proxy.ui.trimTagger(this); });
+});
+
+// If we're jumping straight to a row, highlight it
+$(function () {
+    var hash = window.location.hash;
+    if (hash.startsWith('#row_')) {
+        var node = document.getElementById(hash.substring(1));
+        var previous = node.previousElementSibling;
+        $(node).addClass('highlighted');
+        // hack to fix scrolling into view
+        if (previous) {
+            if (previous.previousElementSibling) {
+                previous.previousElementSibling.scrollIntoView();
+            } else {
+                previous.scrollIntoView();
+            }
+        }
+    }
 });
 
 

@@ -20,20 +20,54 @@ DEBUG=True
 SECRET_KEY='<secret key>'
 
 #
-# Output cache
+# Admin password MD5 hash
+# To generate, use this command (replacing "PASSWORD" with your password):
+# $ python -c 'import hashlib; print(hashlib.md5("PASSWORD".encode("utf-8")).hexdigest())'
 #
-CACHE_DIR = '/tmp/'
-CACHE_MAX_ITEMS = 1000
-CACHE_DEFAULT_TIMEOUT_SECONDS = 3600 # 1 hour
+ADMIN_PASSWORD_MD5='<md5 hash>'
 
 #
-# Request cache
+# Output cache configuration
+# see https://flask-caching.readthedocs.io/en/latest/#built-in-cache-backends
 #
-REQUEST_CACHE = '/tmp/hxl_proxy_requests'
+
+# filesystem output cache
+
+CACHE_CONFIG = {
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': '/tmp/',
+    'CACHE_THRESHOLD': 1000,
+    'CACHE_DEFAULT_TIMEOUT': 3600,
+}
+
+# redis output cache
+
+#CACHE_CONFIG = {
+#    'CACHE_TYPE': 'redis',
+#    'CACHE_KEY_PREFIX': 'hxl-proxy-out:',
+#    'CACHE_DEFAULT_TIMEOUT': 3600,
+#    'CACHE_REDIS_HOST': '127.0.0.1',
+#    'CACHE_REDIS_PORT': '6379',
+#    'CACHE_REDIS_PASSWORD': '',
+#    'CACHE_REDIS_DB': '',
+#    'CACHE_REDIS_URL': ''
+#}
+
+
+#
+# Request cache configuration (input)
+#
+
+REQUEST_CACHE_NAME = 'hxl-proxy-in' # no trailing colon needed
+REQUEST_CACHE_BACKEND = 'memory'
+#REQUEST_CACHE_BACKEND = 'redis'
 REQUEST_CACHE_TIMEOUT_SECONDS = 3600
 
 # Cache timeout for requests to iTOS
-PCODE_CACHE_TIMEOUT_SECONDS = 604800
+ITOS_CACHE_NAME = 'itos-in' # no trailing colon needed
+ITOS_CACHE_BACKEND = 'memory'
+#ITOS_CACHE_BACKEND = 'redis'
+ITOS_CACHE_TIMEOUT = 604800
 
 #
 # Database connection info

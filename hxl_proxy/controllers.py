@@ -1,18 +1,25 @@
 """ HTTP controllers for the HXL Proxy
+
+All of the Flask controllers are in this module.
+
+See unit tests in tests/test_controllers.py
+
 Started January 2015 by David Megginson
 License: Public Domain
 """
 
 import hxl_proxy
+from hxl.io import HXLIOException
 
-from hxl_proxy import app, auth, cache, dao, exceptions, filters, pcodes, preview, recipes, util, validate
+from hxl_proxy import admin, app, auth, cache, dao, exceptions, filters, pcodes, preview, recipes, util, validate
 
-import datetime, flask, hxl, io, json, logging, requests, requests_cache, werkzeug
+import datetime, flask, hxl, io, json, logging, requests, requests_cache, werkzeug, csv
 
 
 logger = logging.getLogger(__name__)
 """ Python logger for this module """
 
+SHEET_MAX_NO = 20
 
 
 ########################################################################
@@ -154,9 +161,34 @@ def before_request():
 
 
 ########################################################################
-# Primary /data GET controllers
+# Top-level page controllers
 ########################################################################
 
+# has tests
+@app.route("/about.html")
+def about():
+    """ Flask controller: show the about page
+    Includes version information for major packages, so that
+    we can tell easily what's deployed.
+    """
+    # include version information for these packages
+    releases = {
+        'hxl-proxy': hxl_proxy.__version__,
+        'libhxl': hxl.__version__,
+        'flask': flask.__version__,
+        'requests': requests.__version__
+    }
+
+    # draw the web page
+    return flask.render_template('about.html', releases=releases)
+
+
+
+########################################################################
+# /data GET controllers
+########################################################################
+
+# has tests
 @app.route("/data/<recipe_id>/login")
 def data_login(recipe_id):
     """ Flask controller: log in to work on a saved recipe
@@ -169,7 +201,7 @@ def data_login(recipe_id):
     recipe = recipes.Recipe(recipe_id)
     return flask.render_template('data-login.html', recipe=recipe)
 
-
+# has tests
 @app.route("/data/source")
 @app.route("/data/<recipe_id>/source")
 def data_source(recipe_id=None):
@@ -180,7 +212,7 @@ def data_source(recipe_id=None):
     recipe = recipes.Recipe(recipe_id, auth=True)
     return flask.render_template('data-source.html', recipe=recipe)
 
-
+# has tests
 @app.route("/data/tagger")
 @app.route("/data/<recipe_id>/tagger")
 def data_tagger(recipe_id=None):
@@ -240,6 +272,7 @@ def data_tagger(recipe_id=None):
     return flask.render_template('data-tagger.html', recipe=recipe, preview=preview, header_row=header_row)
 
 
+# has tests
 @app.route("/data/edit")
 @app.route("/data/<recipe_id>/edit", methods=['GET', 'POST'])
 def data_edit(recipe_id=None):
@@ -302,6 +335,7 @@ def data_edit(recipe_id=None):
     )
 
 
+# has tests
 @app.route("/data/save")
 @app.route("/data/<recipe_id>/save")
 def data_save(recipe_id=None):
@@ -330,7 +364,7 @@ def data_save(recipe_id=None):
     # Draw the web page
     return flask.render_template('data-save.html', recipe=recipe, need_token=need_token, is_ckan=is_ckan)
 
-
+# has tests
 @app.route("/data/validate")
 @app.route("/data/validate.<format>")
 @app.route("/data/<recipe_id>/validate")
@@ -410,17 +444,20 @@ def data_validate(recipe_id=None, format='html'):
         )
 
 
+# has tests
 @app.route("/data/advanced")
-def show_advanced():
+@app.route("/data/<recipe_id>/advanced")
+def show_advanced(recipe_id=None):
     """ Flask controller: developer page for entering a JSON recipe directly
     This page isn't linked from the HXML Proxy validation, but it's a convenient
     place to experiment with creating JSON-encoded recipes, as described at 
     https://github.com/HXLStandard/hxl-proxy/wiki/JSON-recipes
     """
-    recipe = util.get_recipe(auth=True)
+    recipe = recipes.Recipe(recipe_id)
     return flask.render_template("data-advanced.html", recipe=recipe)
 
 
+# has tests
 @app.route("/data")
 @app.route("/data.<flavour>.<format>")
 @app.route("/data.<format>")
@@ -484,8 +521,9 @@ def data_view(recipe_id=None, format="html", stub=None, flavour=None):
             source = filters.setup_filters(recipe)
         else:
             with requests_cache.enabled(
-                    app.config.get('REQUEST_CACHE', '/tmp/hxl_proxy_requests'), 
-                    expire_after=app.config.get('REQUEST_CACHE_TIMEOUT_SECONDS', 3600)
+                    app.config.get('REQUEST_CACHE_NAME', 'hxl-proxy-in'),
+                    backend=app.config.get('REQUEST_CACHE_BACKEND', 'memory'),
+                    expire_after=app.config.get('REQUEST_CACHE_TIMEOUT', 3600)
             ):
                 source = filters.setup_filters(recipe)
 
@@ -548,41 +586,6 @@ def data_view(recipe_id=None, format="html", stub=None, flavour=None):
     # return the response object that will render the output
     return result
 
-
-########################################################################
-# Secondary, supporting GET controllers
-########################################################################
-
-@app.route("/about.html")
-def about():
-    """ Flask controller: show the about page
-    Includes version information for major packages, so that
-    we can tell easily what's deployed.
-    """
-    # include version information for these packages
-    releases = {
-        'hxl-proxy': hxl_proxy.__version__,
-        'libhxl': hxl.__version__,
-        'flask': flask.__version__,
-        'requests': requests.__version__
-    }
-
-    # draw the web page
-    return flask.render_template('about.html', releases=releases)
-
-
-# not currently in use (until we reactivate H.ID support)
-@app.route('/settings/user')
-def user_settings():
-    """ Flask controller: show the user's settings from Humanitarian.ID
-    """
-    if flask.g.member:
-        return flask.render_template('settings-user.html', member=flask.g.member)
-    else:
-        # redirect back to the settings page after login
-        # ('from' is reserved, so we need a bit of a workaround)
-        args = { 'from': util.data_url_for('user_settings') }
-        return flask.redirect(url_for('login', **args), 303)
 
 
 #########################################################################
@@ -590,6 +593,7 @@ def user_settings():
 # These are URLs that are not bookmarkable.
 ########################################################################
 
+# needs tests
 @app.route("/actions/login", methods=['POST'])
 def do_data_login():
     """ Flask controller: log the user in for a specific dataset.
@@ -615,7 +619,7 @@ def do_data_login():
     # Try opening the original page again, with password hash token in the cookie.
     return flask.redirect(destination, 303)
 
-
+# needs tests
 @app.route("/actions/save-recipe", methods=['POST'])
 def do_data_save():
     """ Flask controller: create or update a saved recipe
@@ -656,15 +660,18 @@ def do_data_save():
     flask.g.recipe_id = recipe_id # for error handling    
     recipe = recipes.Recipe(recipe_id, auth=True, request_args=flask.request.form)
 
+    destination_facet = flask.request.form.get('dest', 'data_view')
+
     # Update recipe metadata
     if 'name' in flask.request.form:
         recipe.name = flask.request.form['name']
     if 'description' in flask.request.form:
         recipe.description = flask.request.form['description']
-    if 'cloneable' in flask.request.form and not 'authorization_token' in flask.request.form:
-        recipe.cloneable = (flask.request.form['cloneable'] == 'on')
-    else:
-        recipe.cloneable = False
+    if 'cloneable' in flask.request.form:
+        if not flask.request.form.get('authorization_token'):
+            recipe.cloneable = (flask.request.form['cloneable'] == 'on')
+        else:
+            recipe.cloneable = False
     if 'stub' in flask.request.form:
         recipe.stub = flask.request.form['stub']
 
@@ -686,7 +693,7 @@ def do_data_save():
                 flask.session['passhash'] = recipe.passhash
             else:
                 raise werkzeug.exceptions.BadRequest("Passwords don't match")
-        dao.recipes.update(recipe)
+        dao.recipes.update(recipe.toDict())
 
     # Creating a new recipe.
     else:
@@ -706,9 +713,9 @@ def do_data_save():
     cache.clear()
 
     # Redirect to the /data view page
-    return flask.redirect(util.data_url_for('data_view', recipe), 303)
+    return flask.redirect(util.data_url_for(destination_facet, recipe), 303)
 
-
+# has tests
 @app.route("/actions/validate", methods=['POST'])
 def do_data_validate():
     """ Flask controler: validate an uploaded file against an uploaded HXL schema
@@ -788,7 +795,8 @@ def do_data_validate():
     # render the JSON response
     return response
 
-    
+
+# needs tests
 # NOTE: This is an experiment that's probably not used anywhere right now
 # We may choose to remove it
 @app.route('/actions/json-spec', methods=['POST'])
@@ -850,6 +858,7 @@ def do_json_recipe():
     # Render the output
     return response
 
+
 
 ########################################################################
 # Humanitarian.ID controllers
@@ -889,6 +898,21 @@ def hid_logout():
     flask.flash("Disconnected from your Humanitarian.ID account (browsing anonymously).")
     return flask.redirect(path, 303)
 
+
+# not currently in use (until we reactivate H.ID support)
+@app.route('/settings/user')
+def user_settings():
+    """ Flask controller: show the user's settings from Humanitarian.ID
+    """
+    if flask.g.member:
+        return flask.render_template('settings-user.html', member=flask.g.member)
+    else:
+        # redirect back to the settings page after login
+        # ('from' is reserved, so we need a bit of a workaround)
+        args = { 'from': util.data_url_for('user_settings') }
+        return flask.redirect(url_for('login', **args), 303)
+
+
 @app.route('/oauth/authorized2/1')
 def do_hid_authorisation():
     """Flask controller: accept an OAuth2 token after successful login via Humanitarian.ID
@@ -922,14 +946,122 @@ def do_hid_authorisation():
 
 
 ########################################################################
-# Controllers for extras tacked onto the Proxy
+# /admin controllers
+########################################################################
+
+
+# needs tests
+@app.route("/admin/login")
+def admin_login():
+    """ Log in to use admin functions """
+    return flask.render_template('admin-login.html')
+
+
+# needs tests
+@app.route("/admin/recipes/<recipe_id>/")
+def admin_recipe_view(recipe_id):
+    """ View a specific recipe """
+    admin.admin_auth()
+    recipe = recipes.Recipe(recipe_id, auth=False)
+    if 'authorization_token' in recipe.args:
+        clone_url = None
+    else:
+        clone_url = util.data_url_for('data_view', recipe, cloned=True)
+    return flask.render_template('admin-recipe-view.html', recipe=recipe, clone_url=clone_url)
+
+
+# needs tests
+@app.route("/admin/recipes/<recipe_id>/edit.html")
+def admin_recipe_edit(recipe_id):
+    """ Edit a saved recipe """
+    admin.admin_auth()
+    recipe = recipes.Recipe(recipe_id, auth=False)
+    args = json.dumps(recipe.args, indent=4)
+    return flask.render_template('admin-recipe-edit.html', recipe=recipe, args=args)
+
+
+# needs tests
+@app.route("/admin/recipes/<recipe_id>/delete.html")
+def admin_recipe_delete(recipe_id):
+    """ Delete a saved recipe """
+    admin.admin_auth()
+    recipe = recipes.Recipe(recipe_id, auth=False)
+    return flask.render_template('admin-recipe-delete.html', recipe=recipe)
+
+
+# needs tests
+@app.route("/admin/recipes/")
+def admin_recipe_list():
+    """ List all saved recipes """
+    admin.admin_auth()
+    recipes = admin.admin_get_recipes()
+    return flask.render_template('admin-recipe-list.html', recipes=recipes)
+
+
+# needs tests
+@app.route("/admin/")
+def admin_root():
+    """ Root of admin pages """
+    admin.admin_auth()
+    return flask.render_template('admin-root.html')
+
+
+# needs tests
+@app.route("/admin/actions/login", methods=['POST'])
+def do_admin_login():
+    """ POST controller for an admin login """
+    password = flask.request.form.get('password')
+    admin.do_admin_login(password)
+    flask.flash("Logged in as admin")
+    return flask.redirect('/admin/', 303)
+
+
+# needs tests
+@app.route("/admin/actions/logout", methods=['POST'])
+def do_admin_logout():
+    """ POST controller for an admin logout """
+    admin.admin_auth()
+    admin.do_admin_logout()
+    flask.flash("Logged out of admin functions")
+    return flask.redirect('/data/source', 303)
+
+
+# needs tests
+@app.route("/admin/actions/update-recipe", methods=['POST'])
+def do_admin_update_recipe():
+    admin.admin_auth()
+    recipe_id = flask.request.form.get('recipe_id')
+    admin.do_admin_update_recipe(dict(flask.request.form))
+    flask.flash("Updated recipe {}".format(recipe_id))
+    return flask.redirect('/admin/recipes/{}/'.format(recipe_id), 303)
+
+
+# needs tests
+@app.route("/admin/actions/delete-recipe", methods=['POST'])
+def do_admin_delete_recipe():
+    admin.admin_auth()
+    recipe_id = flask.request.form.get('recipe_id')
+    admin.do_admin_delete_recipe(recipe_id)
+    flask.flash("Deleted recipe {}".format(recipe_id))
+    return flask.redirect('/admin/recipes/'.format(recipe_id), 303)
+
+
+
+########################################################################
+# Controllers for extra API calls
+#
+# Migrating to /api (gradually)
 #
 # None of this is core to the Proxy's function, but this is a convenient
 # place to keep it.
 ########################################################################
 
-@app.route("/hxl-test.<format>")
-@app.route("/hxl-test")
+
+# needs tests
+@app.route("/api/hxl-test.<format>")
+@app.route("/api/hxl-test")
+@app.route("/hxl-test.<format>") # legacy path
+@app.route("/hxl-test") # legacy path
 def hxl_test(format='html'):
     """ Flask controller: test if a resource is HXL hashtagged
     GET parameters:
@@ -991,7 +1123,167 @@ def hxl_test(format='html'):
         return flask.render_template('hxl-test.html', result=result)
 
 
-@app.route('/pcodes/<country>-<level>.csv')
+# has tests
+@app.route('/api/data-preview.<format>')
+#@cache.cached(key_prefix=util.make_cache_key, unless=util.skip_cache_p) # can't cache generator output
+def data_preview (format="json"):
+    """ Return a raw-data preview of any data source supported by the HXL Proxy
+    Does not attempt HXL processing.
+    """
+
+    def json_generator ():
+        """ Generate JSON output, row by row """
+        counter = 0
+        yield '['
+        for row in input:
+            if rows > 0 and counter >= rows:
+                break
+            if counter == 0:
+                line = "\n  "
+            else:
+                line = ",\n  "
+            counter += 1
+            line += json.dumps(row)
+            yield line
+        yield "\n]"
+
+    def csv_generator ():
+        """ Generate CSV output, row by row """
+        counter = 0
+        for row in input:
+            if rows > 0 and counter >= rows:
+                break
+            counter += 1
+            output = io.StringIO()
+            csv.writer(output).writerow(row)
+            s = output.getvalue()
+            output.close()
+            yield s
+    
+    flask.g.output_format = format # for error reporting
+
+    # params
+    url = flask.request.args.get('url')
+    if not url:
+        raise ValueError("&url parameter required")
+
+    sheet = flask.request.args.get('sheet', 0)
+    sheet = int(sheet)
+
+    rows = flask.request.args.get('rows', -1)
+    rows = int(rows)
+
+    # make input
+    if util.skip_cache_p():
+        input = hxl.io.make_input(url, sheet_index=sheet)
+    else:
+        with requests_cache.enabled(
+                app.config.get('REQUEST_CACHE_NAME', 'hxl-proxy-in'),
+                backend=app.config.get('REQUEST_CACHE_BACKEND', 'memory'),
+                expire_after=app.config.get('REQUEST_CACHE_TIMEOUT', 3600)
+        ):
+            input = hxl.io.make_input(url, sheet_index=sheet)
+
+    # Generate result
+    if format == 'json':
+        response = flask.Response(json_generator(), mimetype='application/json')
+    elif format == 'csv':
+        response = flask.Response(csv_generator(), mimetype='text/csv')
+    else:
+        raise ValueError("Unsupported &format {}".format(format))
+
+    # Add CORS header and return
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+# has no tests
+@app.route('/api/data-preview-sheets.<format>')
+# @cache.cached(key_prefix=util.make_cache_key, unless=util.skip_cache_p) # can't cache generator output
+def data_preview_sheets(format="json"):
+    """ Return names only for the sheets in an Excel workbook.
+    In case of csv it returns one sheet name 'Default'
+    You must use data_preview to get the actual sheet contents.
+    """
+
+    def json_generator():
+        """ Generate JSON output, row by row """
+        counter = 0
+        yield '['
+        for row in input:
+            if rows > 0 and counter >= rows:
+                break
+            if counter == 0:
+                line = "\n  "
+            else:
+                line = ",\n  "
+            counter += 1
+            line += json.dumps(row)
+            yield line
+        yield "\n]"
+
+    def csv_generator():
+        """ Generate CSV output, row by row """
+        counter = 0
+        for row in input:
+            if rows > 0 and counter >= rows:
+                break
+            counter += 1
+            output = io.StringIO()
+            csv.writer(output).writerow([row])
+            s = output.getvalue()
+            output.close()
+            yield s
+
+    flask.g.output_format = format  # for error reporting
+
+    # params
+    url = flask.request.args.get('url')
+    if not url:
+        raise ValueError("&url parameter required")
+
+    rows = -1
+
+    # make input
+    _output = []
+    try:
+        for sheet in range(0, SHEET_MAX_NO):
+            if util.skip_cache_p():
+                input = hxl.io.make_input(url, sheet_index=sheet)
+            else:
+                with requests_cache.enabled(
+                        app.config.get('REQUEST_CACHE', '/tmp/hxl_proxy_requests'),
+                        expire_after=app.config.get('REQUEST_CACHE_TIMEOUT_SECONDS', 3600)
+                ):
+                    input = hxl.io.make_input(url, sheet_index=sheet)
+            if isinstance(input, hxl.io.CSVInput):
+                _output.append("Default")
+                break
+            else:
+                if input._sheet and input._sheet.name:
+                    _output.append(input._sheet.name)
+                else:
+                    _output.append(str(sheet))
+
+    except HXLIOException as ex:
+        logger.debug("Found the last sheet of the Excel file")
+
+    # Generate result
+    input = _output
+    if format == 'json':
+        response = flask.Response(json_generator(), mimetype='application/json')
+    elif format == 'csv':
+        response = flask.Response(csv_generator(), mimetype='text/csv')
+    else:
+        raise ValueError("Unsupported &format {}".format(format))
+
+    # Add CORS header and return
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    return response
+
+
+# has tests
+@app.route('/api/pcodes/<country>-<level>.csv')
+@app.route('/pcodes/<country>-<level>.csv') # legacy path
 @cache.cached(timeout=604800) # 1 week cache
 def pcodes_get(country, level):
     """ Flask controller: look up a list of P-codes from iTOS
@@ -1012,7 +1304,9 @@ def pcodes_get(country, level):
     return response
 
 
-@app.route('/hash')
+# has tests
+@app.route('/api/hash')
+@app.route('/hash') # legacy path
 def make_hash():
     """ Flask controller: hash a HXL dataset
     GET parameters:
@@ -1048,11 +1342,14 @@ def make_hash():
         mimetype="application/json"
     )
 
+
 
 ########################################################################
 # Controllers for removed features (display error messages)
 ########################################################################
 
+
+# needs tests
 @app.route("/")
 def home():
     """ Flask controller: nothing currently at root
@@ -1062,16 +1359,20 @@ def home():
     return flask.redirect(flask.url_for("data_source", **flask.request.args) , 302)
 
 
+# has tests
 @app.route('/data/<recipe_id>/chart')
 @app.route('/data/chart')
 def data_chart(recipe_id=None):
     """ Flask controller: discontinued charting endpoint """
     return "The HXL Proxy no longer supports basic charts. Please visit <a href='https://tools.humdata.org/'>tools.humdata.org</a>", 410
 
+
+# has tests
 @app.route('/data/<recipe_id>/map')
 @app.route('/data/map')
 def data_map(recipe_id=None):
     """ Flask controller: discontinued mapping endpoint """
     return "The HXL Proxy no longer supports basic maps. Please visit <a href='https://tools.humdata.org/'>tools.humdata.org</a>", 410
+
 
 # end

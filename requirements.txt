@@ -1,7 +1,8 @@
-libhxl==4.15.1
+libhxl==4.17
 requests>=2.11
 ckanapi>=3.5
 flask>=1.0
 flask-caching
 requests_cache
 mysql-connector-python
+redis

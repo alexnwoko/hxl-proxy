@@ -30,10 +30,15 @@ python setup.py test
 
 To configure the proxy, make a copy of config.py.TEMPLATE (e.g. to config.py), and change its values as necessary. The environment variable HXL\_PROXY\_CONFIG should point to your local config file's location.  More details appear below.
 
-## Filesystem
+## Admin interface
 
-* CACHE_DIR - a directory where the proxy can cache output files. The directory must exist and be readable and writable by the web-server process.
-* REQUEST_CACHE - a file (which the proxy will create if necessary) where the proxy can cache input files. The file's directory must exist and be readable and writable by the web-server process.
+To enable the admin interface, you need to enter the MD5 hash of a password into the ADMIN_PASSWORD_MD5 field in the config file. If your password were "hello-kitty" (don't do that!), you could generate the hash like this using Python3:
+
+    $ python -c 'import hashlib; print(hashlib.md5("hello-kitty".encode("utf-8")).hexdigest())'
+
+## Caching
+
+Choose and configure your input and output caches as needed, following the examples in the config template. You may need to create local directories or databases, depending on the caching backends you choose.
 
 ## Database support
 

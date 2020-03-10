@@ -17,6 +17,12 @@ from . import base, resolve_path
 
 DATASET_URL = 'http://example.org/basic-dataset.csv'
 
+
+
+########################################################################
+# Base class for controller tests
+########################################################################
+
 class AbstractControllerTest(base.AbstractDBTest):
     """Base class for controller tests."""
 
@@ -79,35 +85,10 @@ class AbstractControllerTest(base.AbstractDBTest):
         return recipe
 
 
-class TestLogin(AbstractControllerTest):
-
-    path = '/login'
-
-    def test_redirect(self):
-        response = self.get(self.path, status=303)
-        assert b'/oauth/authorize' in response.data
-
-
-class TestLogout(AbstractControllerTest):
-
-    path = '/logout'
-
-    def test_redirect(self):
-        response = self.get(self.path, status=303)
-        self.assertEqual('http://localhost/', response.location)
-
-    def test_session(self):
-        """Test that logout clears the session."""
-        import flask
-        # Extra cruft for setting a session cookie
-        with self.client as client:
-            with client.session_transaction() as session:
-                session['user'] = 'abc'
-            response = self.get('/data/source')
-            assert 'user' in flask.session
-            response = self.get(self.path, status=303)
-            assert 'user' not in flask.session
-
+
+########################################################################
+# Top-level controllers
+########################################################################
 
 class TestAbout(AbstractControllerTest):
 
@@ -115,6 +96,22 @@ class TestAbout(AbstractControllerTest):
 
     def test_about(self):
         response = self.get(self.path)
+        assert b'About the HXL Proxy' in response.data
+
+
+
+########################################################################
+# /data controllers
+########################################################################
+
+class TestDataLogin(AbstractControllerTest):
+
+    path = '/data/AAAAA/login'
+
+    def test_page(self):
+        response = self.get(self.path)
+        assert b'Password required' in response.data
+        assert b'type="password"' in response.data
 
 
 class TestDataSource(AbstractControllerTest):
@@ -235,9 +232,17 @@ class TestEditPage(AbstractControllerTest):
         response = self.get('/data/{}/edit'.format(self.recipe_id), status=303)
         assert '/data/{}/login'.format(self.recipe_id) in response.headers['Location']
 
-    # TODO test logging in (good and bad passwords)
 
-    # TODO test changing recipe
+class TestDataSavePage(AbstractControllerTest):
+
+    path = '/data/save'
+
+    def test_page(self):
+        response = self.get(self.path, {
+            'url': DATASET_URL,
+        })
+        assert b'Save recipe' in response.data
+        assert b'<form' in response.data
 
 
 class TestDataPage(AbstractControllerTest):
@@ -305,6 +310,7 @@ class TestValidationPage(AbstractControllerTest):
         })
         assert b'Validation succeeded' in response.data
 
+
 class TestValidateAction(AbstractControllerTest):
 
     def test_post_valid_content(self):
@@ -361,26 +367,44 @@ class TestValidateAction(AbstractControllerTest):
                 self.assertTrue('dataset' in report)
                 self.assertTrue(len(report['dataset']) > 2)
 
+
+class TestDataAdvanced(AbstractControllerTest):
+
+    path = '/data/advanced'
+
+    def test_page(self):
+        response = self.get(self.path)
+        assert b'Advanced transformation' in response.data
+
+
+
+########################################################################
+# API tests
+########################################################################
+
 class TestPcodes(AbstractControllerTest):
 
     def test_good_pcodes(self):
-        response = self.get('/pcodes/gin-adm1.csv')
+        response = self.get('/api/pcodes/gin-adm1.csv')
         self.assertTrue(response.headers.get('content-type', '').startswith('text/csv'))
         self.assertEqual('*', response.headers.get('access-control-allow-origin'))
 
     def test_bad_pcodes(self):
-        response = self.get('/pcodes/xxx-adm1.csv', status=404)
+        response = self.get('/api/pcodes/xxx-adm1.csv', status=404)
         #not easy before Flask 1.0
         #self.assertEqual('application/json', response.headers.get('content-type'))
         #self.assertEqual('*', response.headers.get('access-control-allow-origin'))
 
+    
 class TestHash(AbstractControllerTest):
+
+    path = '/api/hash'
 
     URL = 'http://example.org/basic-dataset.csv'
 
     @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
     def test_headers_hash(self):
-        response = self.get('/hash', {
+        response = self.get(self.path, {
             'url': self.URL,
             'headers_only': 'on'
         })
@@ -394,7 +418,7 @@ class TestHash(AbstractControllerTest):
                             
     @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
     def test_data_hash(self):
-        response = self.get('/hash', {
+        response = self.get(self.path, {
             'url': self.URL
         })
         report = json.loads(response.get_data(True))
@@ -407,17 +431,154 @@ class TestHash(AbstractControllerTest):
 
     @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
     def test_hashes_different(self):
-        response_headers = self.get('/hash', {
+        response_headers = self.get(self.path, {
             'url': self.URL,
             'headers_only': 'on'
         })
         report_headers = json.loads(response_headers.get_data(True))
-        response_data = self.get('/hash', {
+        response_data = self.get(self.path, {
             'url': self.URL
         })
         report_data = json.loads(response_data.get_data(True))
         self.assertNotEquals(report_headers['hash'], report_data['hash'])
     
+
+class TestDataPreview(AbstractControllerTest):
+
+    path = '/api/data-preview.json'
+
+    EXPECTED_JSON = [
+        ['Organisation', 'Sector', 'Country'],
+        ['#org', '#sector', '#country'],
+        ['Org A', 'WASH', 'Colombia'],
+        ['Org B', 'Education', 'Guinea'],
+        ['Org C', 'Health', 'Myanmar']
+    ]
+
+    EXPECTED_CSV = b'Organisation,Sector,Country\r\n#org,#sector,#country\r\nOrg A,WASH,Colombia\r\nOrg B,Education,Guinea\r\nOrg C,Health,Myanmar\r\n'
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_csv_input(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/basic-dataset.csv'
+        })
+        self.assertEqual(self.EXPECTED_JSON, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_excel_input(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/basic-dataset.xlsx',
+        })
+        self.assertEqual(self.EXPECTED_JSON, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_excel_multisheet(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/multisheet-dataset.xlsx',
+            'sheet': 1,
+        })
+        self.assertEqual(self.EXPECTED_JSON, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_limit_rows(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/basic-dataset.xlsx',
+            'rows': 2,
+        })
+        self.assertEqual(self.EXPECTED_JSON[:2], response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_csv_output(self):
+        response = self.get('/api/data-preview.csv', {
+            'url': 'http://example.org/basic-dataset.xlsx',
+        })
+        self.assertEqual(self.EXPECTED_CSV, response.data)
+
+class TestDataPreviewGetSheets(AbstractControllerTest):
+
+    path = '/api/data-preview-sheets.json'
+
+    EXPECTED_JSON_FOR_CSV = [
+        'Default'
+    ]
+    EXPECTED_JSON_FOR_EXCEL = [
+        'basic-dataset'
+    ]
+
+    EXPECTED_JSON_FOR_EXCEL_MULTISHEET = [
+        'Not the right sheet',
+        'The right sheet'
+    ]
+
+
+    EXPECTED_CSV = b'basic-dataset\r\n'
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_csv_input(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/basic-dataset.csv'
+        })
+        self.assertEqual(self.EXPECTED_JSON_FOR_CSV, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_excel_input(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/basic-dataset.xlsx',
+        })
+        self.assertEqual(self.EXPECTED_JSON_FOR_EXCEL, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_excel_multisheet(self):
+        response = self.get(self.path, {
+            'url': 'http://example.org/multisheet-dataset.xlsx',
+        })
+        self.assertEqual(self.EXPECTED_JSON_FOR_EXCEL_MULTISHEET, response.json)
+
+    @patch(URL_MOCK_TARGET, new=URL_MOCK_OBJECT)
+    def test_csv_output(self):
+        response = self.get('/api/data-preview-sheets.csv', {
+            'url': 'http://example.org/basic-dataset.xlsx',
+        })
+        self.assertEqual(self.EXPECTED_CSV, response.data)
+
+########################################################################
+# Humanitarian.ID controllers (not currently in use)
+########################################################################
+
+class TestHIDLogin(AbstractControllerTest):
+
+    path = '/login'
+
+    def test_redirect(self):
+        response = self.get(self.path, status=303)
+        assert b'/oauth/authorize' in response.data
+
+
+class TestHIDLogout(AbstractControllerTest):
+
+    path = '/logout'
+
+    def test_redirect(self):
+        response = self.get(self.path, status=303)
+        self.assertEqual('http://localhost/', response.location)
+
+    def test_session(self):
+        """Test that logout clears the session."""
+        import flask
+        # Extra cruft for setting a session cookie
+        with self.client as client:
+            with client.session_transaction() as session:
+                session['user'] = 'abc'
+            response = self.get('/data/source')
+            assert 'user' in flask.session
+            response = self.get(self.path, status=303)
+            assert 'user' not in flask.session
+
+
+
+########################################################################
+# Obsolete pages
+########################################################################
 
 class TestRemovedPages(AbstractControllerTest):
 
@@ -434,6 +595,5 @@ class TestRemovedPages(AbstractControllerTest):
             "url": "http://example.org/data.csv"
         }, 410)
         response = self.get('/data/abcdef/map', {}, 410)
-
 
 # end
